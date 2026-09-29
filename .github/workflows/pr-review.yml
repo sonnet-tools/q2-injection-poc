@@ -1,0 +1,41 @@
+name: PR Review (ungated injection)
+
+# Q2 replica — metadata-injection pull_request_target with NO git-diff change-detector.
+# The PR title flows directly into a run: shell step. No fork-code checkout is involved,
+# so the June/July 2026 actions/checkout hardening does not apply to this shape at all.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # Base checkout WITHOUT ref: — this only brings in the base repo's own review
+      # script; it never touches fork code. It is here so the injected file overwrite
+      # has something to overwrite, exactly like the real aci shape.
+      - name: Checkout base
+        uses: actions/checkout@v4
+
+      # THE SINK: PR title interpolated straight into a run: step. Ungated.
+      - name: Record PR title
+        id: pr-info
+        run: |
+          echo "title=${{ github.event.pull_request.title }}" >> $GITHUB_OUTPUT
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      # Runs the (possibly attacker-overwritten) review script with the secret in scope.
+      - name: Run review
+        id: review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python .github/scripts/pr_review.py
